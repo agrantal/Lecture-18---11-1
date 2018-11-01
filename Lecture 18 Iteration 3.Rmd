@@ -1,0 +1,143 @@
+---
+title: "Lecture 18 Iteration 3"
+output: html_document
+---
+
+#from last class
+
+create dataframe that has info about what amazon page the info comes from along with other info from each page 
+```{r}
+tibble(
+  page = 1:5,
+  url = str_c(url_base, page)
+) %>%
+  mutate(reviews = map(url, read_page_review)) %>%
+  unnest()
+```
+
+keeps track of cell range and move names that go along with it 
+```{r}
+lotr_cell_ranges = 
+  tibble(
+    movie = c("fellowship_ring", "two_towers", "return_king"),
+    cells = c("B3:D6", "F3:H6", "J3:L6")
+  )
+
+lotr_tidy = 
+  lotr_cell_ranges %>% 
+  mutate(
+    word_data = map(cells, ~readxl::read_excel("./data/LotR_Words.xlsx", range = .x)) #running from here up gives you movie, cell name, and word data
+  ) %>% 
+  unnest() %>% #running from here up gives you movie, cells, race, female, male 
+  janitor::clean_names() %>% 
+  gather(key = sex, value = words, female:male) %>%
+  mutate(race = tolower(race)) %>% 
+  select(movie, everything(), -cells) 
+```
+
+
+
+
+
+# Simulations
+
+```{r}
+library(tidyverse)
+set.seed(1)
+```
+
+## Simple linear regression for one n
+
+Simulate data from a simple linear regression, fit the regression model, and return estimates of regression coefficients
+```{r}
+sim_regression = function(n, beta0 = 2, beta1 = 3) {
+  sim_data = tibble(
+    x = rnorm(n, mean = 1, sd = 1),
+    y = beta0 + beta1 * x + rnorm(n, 0, 1) #rnorm = the error term 
+  )
+  ls_fit = lm(y ~ x, data = sim_data) #fit linear model to sim_data that was just created
+  tibble(
+    beta0_hat = coef(ls_fit)[1],
+    beta1_hat = coef(ls_fit)[2]
+  )
+}
+```
+
+### run it a few times 
+
+```{r}
+sim_regression(n = 30, beta0 = 2, beta1 = 3)
+#this defines a sample size of 30, a slope of 3 and an intercept of 2 and gives you a sense of variability in beta0 and beta1
+```
+
+# run it MANY MANY times --> Iterate! 
+
+it's much easier to do repeated sampling using the exact same process (as is done in public health) using a computer... we can define a population and use a random process to generate data and then statiscally analyze it 
+
+run regression 100 times to see effect of randomness on estimates
+```{r}
+output = vector("list", 100)
+
+for (i in 1:100) {     #in general, don't use for loops 
+  output[[i]] = sim_regression(30) #how to save output
+}
+
+sim_results = bind_rows(output)
+
+sim_results = 
+  rerun(100, sim_regression(30, 2, 3)) %>% 
+  bind_rows()  #collapse outputs into single dataframe 
+```
+
+Structurally, rerun is a lot like map – the first argument defines the amount of iteration and the second argument is the function to use in each iteration step. As with map, we’ve replaced a for loop with a segment of code that makes our purpose much more transparent but both approaches give the same results.
+
+###verify that formulas that we derived
+```{r}
+sim_results %>%
+  summarise(mean_b0 = mean(beta0_hat),
+            mean_b1 = mean(beta1_hat))
+```
+
+### plot and compute summaries for our simulation results.
+```{r}
+sim_results %>% 
+  ggplot(aes(x = beta0_hat, y = beta1_hat)) + 
+  geom_point()
+#plot shows that mean and intercept are correlated 
+
+sim_results %>% 
+  gather(key = parameter, value = estimate, beta0_hat:beta1_hat) %>% 
+  group_by(parameter) %>% 
+  summarize(emp_mean = mean(estimate),
+            emp_var = var(estimate)) %>% 
+  knitr::kable(digits = 3)
+```
+
+# Simple linear regressions for several n's (a few sample sizes)
+
+```{r}
+n_list = list("n_30"  = 30, 
+              "n_60"  = 60, 
+              "n_120" = 120, 
+              "n_240" = 240)
+output = vector("list", length = 4)
+
+for (i in 1:4) {
+  output[[i]] = rerun(100, sim_regression(n_list[[i]])) %>% 
+    bind_rows
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
